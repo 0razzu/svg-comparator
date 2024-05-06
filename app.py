@@ -15,6 +15,11 @@ COLOR_ARC = 'magenta'
 COLOR_INT_POINT = 'orange'
 COLOR_END_POINT = 'red'
 
+DIR_LEFT = Point(-1, 0)
+DIR_RIGHT = Point(1, 0)
+DIR_UP = Point(0, -1)
+DIR_DOWN = Point(0, 1)
+
 
 def _to_x_y(complex_point):
     return Point(complex_point.real, complex_point.imag)
@@ -25,7 +30,7 @@ class SVGComparator:
         self.root = root
         self.canvas = tk.Canvas(root, bg='white', width=50, height=50)
         self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
-        self.scale = 1
+        self.scale = 10
         self.filename = None
         self.svg = None
         self.int_points = []
@@ -54,6 +59,15 @@ class SVGComparator:
         self.root.bind('<MouseWheel>', self.mouse_wheel)
         self.root.bind('<Command-equal>', self.scale_up)
         self.root.bind('<Command-minus>', self.scale_down)
+        self.root.bind("<Left>", lambda _: self.move_canvas(DIR_LEFT))
+        self.root.bind("<Right>", lambda _: self.move_canvas(DIR_RIGHT))
+        self.root.bind("<Up>", lambda _: self.move_canvas(DIR_UP))
+        self.root.bind("<Down>", lambda _: self.move_canvas(DIR_DOWN))
+        fast_move_speed = 10
+        self.root.bind("<Shift-Left>", lambda _: self.move_canvas(DIR_LEFT, fast_move_speed))
+        self.root.bind("<Shift-Right>", lambda _: self.move_canvas(DIR_RIGHT, fast_move_speed))
+        self.root.bind("<Shift-Up>", lambda _: self.move_canvas(DIR_UP, fast_move_speed))
+        self.root.bind("<Shift-Down>", lambda _: self.move_canvas(DIR_DOWN, fast_move_speed))
         self.canvas.bind("<ButtonPress-1>", self.on_canvas_click)
         self.canvas.bind("<Double-Button-1>", self.on_canvas_doubleclick)
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
@@ -101,7 +115,8 @@ class SVGComparator:
         _, _, meta = svg2paths2(self.filename)
         xlt, ylt, xrb, yrb = map(int, meta['viewBox'].split())
         width, height = xrb - xlt, yrb - ylt
-        png = cairosvg.svg2png(file_obj=open(self.filename, "rb"), scale=self.scale, output_width=self.scale * width,
+        png = cairosvg.svg2png(file_obj=open(self.filename, "rb"),
+                               output_width=self.scale * width,
                                output_height=self.scale * height)
         image = tk.PhotoImage(data=png)
         self.canvas.create_image(*self.svg_lt_pos, anchor=tk.NW, image=image, tags=('svg',))
@@ -130,6 +145,13 @@ class SVGComparator:
         self.scale /= 1.1
         self.update_canvas()
 
+    def move_canvas(self, direction, speed=1):
+        sgn = lambda x: x / abs(x) if x != 0 else 0
+        delta = Point(speed * sgn(direction.x), speed * sgn(direction.y))
+
+        self.svg_lt_pos = Point(self.svg_lt_pos.x + delta.x, self.svg_lt_pos.y + delta.y)
+        self.canvas.move('all', delta.x, delta.y)
+
     def mouse_wheel(self, event):
         if event.delta > 0:
             self.scale_up()
@@ -157,5 +179,6 @@ class SVGComparator:
 if __name__ == '__main__':
     root = tk.Tk()
     root.title('SVG Comparator')
+    root.geometry(f'{root.winfo_screenwidth() // 2}x{root.winfo_screenheight() // 2}')
     editor = SVGComparator(root)
     root.mainloop()
