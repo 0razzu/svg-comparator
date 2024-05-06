@@ -36,6 +36,7 @@ class SVGComparator:
         self.int_points = []
         self.end_points = []
         self.points_visible = True
+        self.points_checkbutton_flag = tk.BooleanVar(value=self.points_visible)
         self.drag_data = Point(0, 0)
         self.svg_lt_pos = Point(0, 0)
         self.create_menu()
@@ -49,10 +50,19 @@ class SVGComparator:
         file_menu.add_command(label='Exit', command=self.root.quit)
         menubar.add_cascade(label='File', menu=file_menu)
 
-        scale_menu = tk.Menu(menubar, tearoff=0)
-        scale_menu.add_command(label='Scale Up', command=self.scale_up)
-        scale_menu.add_command(label='Scale Down', command=self.scale_down)
-        menubar.add_cascade(label='Scale', menu=scale_menu)
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_command(label='Scale Up', command=self.scale_up)
+        view_menu.add_command(label='Scale Down', command=self.scale_down)
+        view_menu.add_separator()
+        view_menu.add_command(label='Move Left', command=lambda: self.move_canvas(DIR_LEFT))
+        view_menu.add_command(label='Move Right', command=lambda: self.move_canvas(DIR_RIGHT))
+        view_menu.add_command(label='Move Up', command=lambda: self.move_canvas(DIR_UP))
+        view_menu.add_command(label='Move Down', command=lambda: self.move_canvas(DIR_DOWN))
+        view_menu.add_command(label='Move to Origin', command=self.move_canvas_to_origin)
+        view_menu.add_separator()
+        view_menu.add_checkbutton(label='Show Control Points', variable=self.points_checkbutton_flag,
+                                  command=self.toggle_point_visibility)
+        menubar.add_cascade(label='View', menu=view_menu)
 
         self.root.config(menu=menubar)
 
@@ -71,7 +81,7 @@ class SVGComparator:
         self.root.bind("<Shift-Down>", lambda _: self.move_canvas(DIR_DOWN, fast_move_speed))
         self.root.bind("<space>", lambda _: self.toggle_point_visibility())
         self.canvas.bind("<ButtonPress-1>", self.on_canvas_click)
-        self.canvas.bind("<Double-Button-1>", self.on_canvas_doubleclick)
+        self.canvas.bind("<Double-Button-1>", lambda _: self.move_canvas_to_origin)
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
 
     def open_svg(self):
@@ -162,6 +172,7 @@ class SVGComparator:
 
     def toggle_point_visibility(self):
         self.points_visible = not self.points_visible
+        self.points_checkbutton_flag.set(self.points_visible)
         self.draw_points()
 
     def on_canvas_click(self, event):
@@ -171,7 +182,7 @@ class SVGComparator:
         self.move_canvas(Point(event.x - self.drag_data.x, event.y - self.drag_data.y))
         self.drag_data = Point(event.x, event.y)
 
-    def on_canvas_doubleclick(self, _):
+    def move_canvas_to_origin(self):
         self.canvas.moveto('all', 0, 0)
         self.drag_data = Point(0, 0)
 
