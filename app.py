@@ -35,10 +35,11 @@ class SVGComparator:
         self.svg = None
         self.int_points = []
         self.end_points = []
-        self.create_menu()
-        self.bind_events()
+        self.points_visible = True
         self.drag_data = Point(0, 0)
         self.svg_lt_pos = Point(0, 0)
+        self.create_menu()
+        self.bind_events()
 
     def create_menu(self):
         menubar = tk.Menu(self.root)
@@ -68,6 +69,7 @@ class SVGComparator:
         self.root.bind("<Shift-Right>", lambda _: self.move_canvas(DIR_RIGHT, fast_move_speed))
         self.root.bind("<Shift-Up>", lambda _: self.move_canvas(DIR_UP, fast_move_speed))
         self.root.bind("<Shift-Down>", lambda _: self.move_canvas(DIR_DOWN, fast_move_speed))
+        self.root.bind("<space>", lambda _: self.toggle_point_visibility())
         self.canvas.bind("<ButtonPress-1>", self.on_canvas_click)
         self.canvas.bind("<Double-Button-1>", self.on_canvas_doubleclick)
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
@@ -134,8 +136,9 @@ class SVGComparator:
     def draw_points(self):
         self.canvas.delete('point')
 
-        self._draw_points(self.end_points, COLOR_END_POINT)
-        self._draw_points(self.int_points, COLOR_INT_POINT)
+        if self.points_visible:
+            self._draw_points(self.end_points, COLOR_END_POINT)
+            self._draw_points(self.int_points, COLOR_INT_POINT)
 
     def scale_up(self, event=None):
         self.scale *= 1.1
@@ -146,8 +149,7 @@ class SVGComparator:
         self.update_canvas()
 
     def move_canvas(self, direction, speed=1):
-        sgn = lambda x: x / abs(x) if x != 0 else 0
-        delta = Point(speed * sgn(direction.x), speed * sgn(direction.y))
+        delta = Point(speed * direction.x, speed * direction.y)
 
         self.svg_lt_pos = Point(self.svg_lt_pos.x + delta.x, self.svg_lt_pos.y + delta.y)
         self.canvas.move('all', delta.x, delta.y)
@@ -158,18 +160,16 @@ class SVGComparator:
         else:
             self.scale_down()
 
+    def toggle_point_visibility(self):
+        self.points_visible = not self.points_visible
+        self.draw_points()
+
     def on_canvas_click(self, event):
         self.drag_data = Point(event.x, event.y)
 
     def on_canvas_drag(self, event):
-        x = event.x
-        y = event.y
-
-        delta_x = x - self.drag_data.x
-        delta_y = y - self.drag_data.y
-        self.svg_lt_pos = Point(self.svg_lt_pos.x + delta_x, self.svg_lt_pos.y + delta_y)
-        self.canvas.move('all', delta_x, delta_y)
-        self.drag_data = Point(x, y)
+        self.move_canvas(Point(event.x - self.drag_data.x, event.y - self.drag_data.y))
+        self.drag_data = Point(event.x, event.y)
 
     def on_canvas_doubleclick(self, _):
         self.canvas.moveto('all', 0, 0)
