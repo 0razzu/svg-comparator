@@ -2,8 +2,9 @@ import math
 import tkinter as tk
 from collections import namedtuple
 from tkinter import filedialog
+import cairosvg
 
-from svgpathtools import svg2paths, CubicBezier, QuadraticBezier, Arc, Line
+from svgpathtools import svg2paths, svg2paths2, CubicBezier, QuadraticBezier, Arc, Line
 
 Point = namedtuple('Point', ['x', 'y'])
 
@@ -24,13 +25,15 @@ class SVGComparator:
         self.root = root
         self.canvas = tk.Canvas(root, bg='white', width=50, height=50)
         self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
-        self.scale = 10
+        self.scale = 1
+        self.filename = None
         self.svg = None
         self.int_points = []
         self.end_points = []
         self.create_menu()
         self.bind_events()
         self.drag_data = Point(0, 0)
+        self.svg_lt_pos = Point(0, 0)
 
     def create_menu(self):
         menubar = tk.Menu(self.root)
@@ -56,23 +59,15 @@ class SVGComparator:
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
 
     def open_svg(self):
-        filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
-        if filename:
-            self.svg, _ = svg2paths(filename)
-            self.int_points = []
-            self.end_points = []
-            self.canvas.delete('all')
-            self.draw_svg()
-            self.draw_points()
+        self.filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
+        if self.filename:
+            self._collect_points()
+            self.update_canvas()
 
-    def _scale(self, point):
-        return self.scale * point.x, self.scale * point.y
+    def _collect_points(self):
+        svg, _ = svg2paths(self.filename)
 
-    def draw_svg(self):
-        if self.svg is None:
-            return
-
-        for path in self.svg:
+        for path in svg:
             for segment in path:
                 start = _to_x_y(segment.start)
                 end = _to_x_y(segment.end)
@@ -81,53 +76,59 @@ class SVGComparator:
                     self.end_points.append(start)
                 self.end_points.append(end)
 
-                if type(segment) is Line:
-                    self.canvas.create_line(*self._scale(start), *self._scale(end),
-                                            fill=COLOR_LINE, tags=('shape', 'path'))
-
-                elif type(segment) is CubicBezier:
+                if type(segment) is CubicBezier:
                     control1 = _to_x_y(segment.control1)
                     control2 = _to_x_y(segment.control2)
 
                     self.int_points.append(control1)
                     self.int_points.append(control2)
 
-                    self.canvas.create_line(*self._scale(start),
-                                            *self._scale(control1), *self._scale(control2),
-                                            *self._scale(end), smooth=tk.TRUE,
-                                            fill=COLOR_QUAD, tags=('shape', 'path'))
-
                 elif type(segment) is QuadraticBezier:
                     control = _to_x_y(segment.control)
 
                     self.int_points.append(control)
 
-                    self.canvas.create_line(*self._scale(start),
-                                            *self._scale(control),
-                                            *self._scale(end), smooth=tk.TRUE,
-                                            fill=COLOR_CUBIC, tags=('shape', 'path'))
+    def update_canvas(self):
+        self.draw_svg()
+        self.draw_points()
 
-                elif type(segment) is Arc:
-                    ...
+    def _scale(self, point):
+        return self.scale * point.x, self.scale * point.y
+
+    def draw_svg(self):
+        self.canvas.delete('svg')
+
+        _, _, meta = svg2paths2(self.filename)
+        xlt, ylt, xrb, yrb = map(int, meta['viewBox'].split())
+        width, height = xrb - xlt, yrb - ylt
+        png = cairosvg.svg2png(file_obj=open(self.filename, "rb"), scale=self.scale, output_width=self.scale * width,
+                               output_height=self.scale * height)
+        image = tk.PhotoImage(data=png)
+        self.canvas.create_image(*self.svg_lt_pos, anchor=tk.NW, image=image, tags=('svg',))
+        self.canvas.image = image  # Keeping a reference to the image to prevent garbage collection
 
     def _draw_points(self, points, color):
         if len(points) > 0:
             for point in points:
-                self.canvas.create_oval(point.x * self.scale - 1, point.y * self.scale - 1,
-                                        point.x * self.scale + 1, point.y * self.scale + 1,
-                                        fill='', outline=color, tags=('point',))
+                self.canvas.create_oval(self.svg_lt_pos.x + point.x * self.scale - 3,
+                                        self.svg_lt_pos.y + point.y * self.scale - 3,
+                                        self.svg_lt_pos.x + point.x * self.scale + 3,
+                                        self.svg_lt_pos.y + point.y * self.scale + 3,
+                                        fill=color, outline=COLOR_LINE, tags=('point',))
 
     def draw_points(self):
+        self.canvas.delete('point')
+
         self._draw_points(self.end_points, COLOR_END_POINT)
         self._draw_points(self.int_points, COLOR_INT_POINT)
 
     def scale_up(self, event=None):
         self.scale *= 1.1
-        self.canvas.scale('all', 0, 0, 1.1, 1.1)
+        self.update_canvas()
 
     def scale_down(self, event=None):
         self.scale /= 1.1
-        self.canvas.scale('all', 0, 0, 0.9, 0.9)
+        self.update_canvas()
 
     def mouse_wheel(self, event):
         if event.delta > 0:
@@ -144,13 +145,12 @@ class SVGComparator:
 
         delta_x = x - self.drag_data.x
         delta_y = y - self.drag_data.y
+        self.svg_lt_pos = Point(self.svg_lt_pos.x + delta_x, self.svg_lt_pos.y + delta_y)
         self.canvas.move('all', delta_x, delta_y)
         self.drag_data = Point(x, y)
 
     def on_canvas_doubleclick(self, _):
-        x, y = 0, 0
-
-        self.canvas.moveto('all', x, y)
+        self.canvas.moveto('all', 0, 0)
         self.drag_data = Point(0, 0)
 
 
