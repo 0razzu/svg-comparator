@@ -2,72 +2,46 @@ import tkinter as tk
 from tkinter import filedialog
 
 import cairosvg
-from svgpathtools import svg2paths, svg2paths2, CubicBezier, QuadraticBezier
 
-
-class Point:
-    def __init__(self, x, y, whose=None):
-        self.x = x
-        self.y = y
-        self.whose = whose
-
-    def __add__(self, other):
-        if isinstance(other, Point):
-            return Point(self.x + other.x, self.y + other.y, self.whose)
-        else:
-            return Point(self.x + other, self.y + other, self.whose)
-
-    def __radd__(self, other):
-        return self + other
-
-    def __sub__(self, other):
-        if isinstance(other, Point):
-            return Point(self.x - other.x, self.y - other.y, self.whose)
-        else:
-            return Point(self.x - other, self.y - other, self.whose)
-
-    def __rsub__(self, other):
-        return self - other
-
-    def __mul__(self, coef):
-        return Point(self.x * coef, self.y * coef, self.whose)
-
-    def __rmul__(self, coef):
-        return Point(coef * self.x, coef * self.y, self.whose)
-
-
-COLOR_LINE = 'black'
-COLOR_CUBIC = 'blue'
-COLOR_QUAD = 'green'
-COLOR_ARC = 'magenta'
-COLOR_INT_POINT = 'orange'
-COLOR_END_POINT = 'red'
-COLOR_CONNECTOR = 'violet'
-
-DIR_LEFT = Point(-1, 0)
-DIR_RIGHT = Point(1, 0)
-DIR_UP = Point(0, -1)
-DIR_DOWN = Point(0, 1)
-
-
-def _complex_to_point(complex_point):
-    return Point(complex_point.real, complex_point.imag)
+from consts import *
+from point import *
+from svg import Svg
 
 
 class SVGComparator:
     def __init__(self, root):
         self.root = root
-        self.canvas = tk.Canvas(root, bg='white', width=50, height=50)
-        self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
+
+        self.canvas_frame = tk.Frame(root)
+        self.canvas_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(self.canvas_frame, bg='white')
+        self.canvas.images = {}  # Against GC
+        self.canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.layers_frame = tk.Frame(root)
+        self.layers_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        self.layers_canvas = tk.Canvas(self.layers_frame)
+        self.layers_scrollbar = tk.Scrollbar(self.layers_frame, orient=tk.HORIZONTAL, command=self.layers_canvas.xview)
+
+        self.layers_list = tk.Frame(self.layers_canvas)
+        self.layers_list.bind(
+            '<Configure>',
+            lambda e: self.layers_canvas.configure(scrollregion=self.layers_canvas.bbox(tk.ALL))
+        )
+        self.layers_canvas.create_window((0, 0), window=self.layers_list, anchor=tk.NW)
+        self.layers_canvas.configure(xscrollcommand=self.layers_scrollbar.set)
+
+        self.layers_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.layers_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
         self.scale = 10
         self.filename = None
-        self.svg = None
-        self.int_points = []
-        self.end_points = []
+        self.svgs = {}
         self.points_visible = True
         self.points_checkbutton_flag = tk.BooleanVar(value=self.points_visible)
         self.drag_data = Point(0, 0)
-        self.svg_lt_pos = Point(0, 0)
+        self.selected_layers = set()
+
         self.create_menu()
         self.bind_events()
 
@@ -96,100 +70,121 @@ class SVGComparator:
         self.root.config(menu=menubar)
 
     def bind_events(self):
-        self.root.bind('<MouseWheel>', self.mouse_wheel)
-        self.root.bind('<Command-equal>', lambda _: self.scale_up)
-        self.root.bind('<Command-minus>', lambda _: self.scale_down)
-        self.root.bind("<Left>", lambda _: self.move_canvas(DIR_LEFT))
-        self.root.bind("<Right>", lambda _: self.move_canvas(DIR_RIGHT))
-        self.root.bind("<Up>", lambda _: self.move_canvas(DIR_UP))
-        self.root.bind("<Down>", lambda _: self.move_canvas(DIR_DOWN))
+        self.root.bind('<Command-equal>', lambda _: self.scale_up())
+        self.root.bind('<Command-minus>', lambda _: self.scale_down())
+        self.root.bind('<Left>', lambda _: self.move_canvas(DIR_LEFT))
+        self.root.bind('<Right>', lambda _: self.move_canvas(DIR_RIGHT))
+        self.root.bind('<Up>', lambda _: self.move_canvas(DIR_UP))
+        self.root.bind('<Down>', lambda _: self.move_canvas(DIR_DOWN))
         fast_move_speed = 10
-        self.root.bind("<Shift-Left>", lambda _: self.move_canvas(DIR_LEFT, fast_move_speed))
-        self.root.bind("<Shift-Right>", lambda _: self.move_canvas(DIR_RIGHT, fast_move_speed))
-        self.root.bind("<Shift-Up>", lambda _: self.move_canvas(DIR_UP, fast_move_speed))
-        self.root.bind("<Shift-Down>", lambda _: self.move_canvas(DIR_DOWN, fast_move_speed))
-        self.root.bind("<space>", lambda _: self.toggle_point_visibility())
-        self.canvas.bind("<ButtonPress-1>", self.on_canvas_click)
-        self.canvas.bind("<Double-Button-1>", lambda _: self.move_canvas_to_origin())
-        self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
+        self.root.bind('<Shift-Left>', lambda _: self.move_canvas(DIR_LEFT, fast_move_speed))
+        self.root.bind('<Shift-Right>', lambda _: self.move_canvas(DIR_RIGHT, fast_move_speed))
+        self.root.bind('<Shift-Up>', lambda _: self.move_canvas(DIR_UP, fast_move_speed))
+        self.root.bind('<Shift-Down>', lambda _: self.move_canvas(DIR_DOWN, fast_move_speed))
+        self.root.bind('<space>', lambda _: self.toggle_point_visibility())
+        self.canvas.bind('<MouseWheel>', self.on_canvas_scroll)
+        self.canvas.bind('<ButtonPress-1>', self.on_canvas_click)
+        self.canvas.bind('<Double-Button-1>', lambda _: self.move_canvas_to_origin())
+        self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
+        self.layers_canvas.bind('<MouseWheel>', self.on_layers_canvas_scroll)
 
     def open_svg(self):
-        self.filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
-        if self.filename:
-            self._collect_points()
+        filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
+        if filename:
+            svg = Svg(filename)
+            self.svgs[filename] = svg
             self.update_canvas()
+            self.add_layer(filename)
+            self.selected_layers.add(svg)
 
-    def _collect_points(self):
-        self.int_points = []
-        self.end_points = []
-        svg, _ = svg2paths(self.filename)
+    def add_layer(self, filename):
+        svg = self.svgs[filename]
 
-        for path in svg:
-            for segment in path:
-                start = _complex_to_point(segment.start)
-                end = _complex_to_point(segment.end)
+        frame = tk.Frame(self.layers_list)
 
-                if len(self.end_points) == 0 or self.end_points[-1] != start:
-                    self.end_points.append(start)
-                self.end_points.append(end)
+        eye_button = tk.Button(frame, text='👁', command=lambda: self.toggle_layer_visibility(svg))
+        eye_button.pack(side=tk.LEFT)
 
-                if type(segment) is CubicBezier:
-                    control1 = _complex_to_point(segment.control1)
-                    control1.whose = [start]
-                    control2 = _complex_to_point(segment.control2)
-                    control2.whose = [end]
+        tick = tk.Checkbutton(frame, command=lambda: self.toggle_layer_selection(svg))
+        tick.select()
+        tick.pack(side=tk.LEFT)
 
-                    self.int_points.append(control1)
-                    self.int_points.append(control2)
+        layer_label = tk.Label(frame, text=filename)
+        layer_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-                elif type(segment) is QuadraticBezier:
-                    control = _complex_to_point(segment.control)
-                    control.whose = [start, end]
+        frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
-                    self.int_points.append(control)
+    def toggle_layer_visibility(self, svg):
+        for layer_frame in self.layers_list.winfo_children():
+            if svg.id == self.svgs[layer_frame.winfo_children()[2].cget('text')].id:
+                eye_button = layer_frame.winfo_children()[0]
+                if eye_button.cget('text') == '👁':
+                    svg.visible = False
+                    eye_button.config(text='🚫')
+                    self.canvas.delete(svg.id)
+                else:
+                    svg.visible = True
+                    eye_button.configure(text='👁')
+                    self.draw_svg(svg)
+                    self.draw_points(svg)
+                break
+
+    def toggle_layer_selection(self, svg):
+        for layer_frame in self.layers_list.winfo_children():
+            tick = layer_frame.winfo_children()[1]
+
+            filename = layer_frame.winfo_children()[2].cget('text')
+            if svg.id == self.svgs[filename].id:
+                if svg in self.selected_layers:
+                    tick.deselect()
+                    self.selected_layers.remove(svg)
+                else:
+                    tick.select()
+                    self.selected_layers.add(svg)
 
     def update_canvas(self):
-        self.draw_svg()
-        self.draw_points()
+        for svg in self.svgs.values():
+            self.draw_svg(svg)
+            self.draw_points(svg)
 
-    def draw_svg(self):
-        if not self.filename:
+    def draw_svg(self, svg):
+        if not svg.visible:
             return
 
-        self.canvas.delete('svg')
+        self.canvas.delete(f'{svg.id}.image')
 
-        _, _, meta = svg2paths2(self.filename)
-        xlt, ylt, xrb, yrb = map(int, meta['viewBox'].split())
-        width, height = xrb - xlt, yrb - ylt
-        png = cairosvg.svg2png(file_obj=open(self.filename, "rb"),
-                               output_width=self.scale * width,
-                               output_height=self.scale * height)
-        image = tk.PhotoImage(data=png)
-        self.canvas.create_image(self.svg_lt_pos.x, self.svg_lt_pos.y, anchor=tk.NW, image=image, tags=('svg',))
-        self.canvas.image = image  # Keeping a reference to the image to prevent garbage collection
+        image = tk.PhotoImage(data=svg.get_png(self.scale))
+        self.canvas.create_image(svg.lt_pos.x, svg.lt_pos.y, anchor=tk.NW, image=image,
+                                 tags=(f'{svg.id}.image', svg.id, 'image'))
+        self.canvas.images[svg.id] = image  # Keeping a reference to the image to prevent garbage collection
 
-    def _draw_points(self, points, color):
+    def _draw_points(self, svg, points, color):
         if len(points) > 0:
             for point in points:
-                pos = self.svg_lt_pos + point * self.scale
+                pos = svg.lt_pos + point * self.scale
                 self.canvas.create_oval(pos.x - 3, pos.y - 3, pos.x + 3, pos.y + 3,
-                                        fill=color, outline=COLOR_LINE, tags=('point',))
+                                        fill=color, outline=COLOR_LINE, tags=(f'{svg.id}.point', svg.id, 'point'))
 
-    def draw_points(self):
-        self.canvas.delete('point', 'connector')
+    def draw_points(self, svg):
+        if not svg.visible:
+            return
+
+        self.canvas.delete(f'{svg.id}.point', f'{svg.id}.connector')
 
         if self.points_visible:
-            self._draw_points(self.int_points, COLOR_INT_POINT)
+            self._draw_points(svg, svg.int_points, COLOR_INT_POINT)
 
-            for int_point in self.int_points:
+            lt_pos = svg.lt_pos
+            for int_point in svg.int_points:
                 for end_point in int_point.whose:
-                    self.canvas.create_line(self.svg_lt_pos.x + self.scale * int_point.x,
-                                            self.svg_lt_pos.y + self.scale * int_point.y,
-                                            self.svg_lt_pos.x + self.scale * end_point.x,
-                                            self.svg_lt_pos.y + self.scale * end_point.y,
-                                            fill=COLOR_CONNECTOR, width=1, arrow=tk.FIRST, tags=('connector',))
+                    self.canvas.create_line(lt_pos.x + self.scale * int_point.x,
+                                            lt_pos.y + self.scale * int_point.y,
+                                            lt_pos.x + self.scale * end_point.x,
+                                            lt_pos.y + self.scale * end_point.y,
+                                            fill=COLOR_CONNECTOR, width=1, arrow=tk.FIRST,
+                                            tags=(f'{svg.id}.connector', svg.id, 'connector'))
 
-            self._draw_points(self.end_points, COLOR_END_POINT)
+            self._draw_points(svg, svg.end_points, COLOR_END_POINT)
 
     def scale_up(self):
         self.scale *= 1.1
@@ -202,10 +197,11 @@ class SVGComparator:
     def move_canvas(self, direction, speed=1):
         delta = speed * direction
 
-        self.svg_lt_pos = self.svg_lt_pos + delta
-        self.canvas.move('all', delta.x, delta.y)
+        for svg in self.selected_layers:
+            svg.lt_pos += delta
+            self.canvas.move(svg.id, delta.x, delta.y)
 
-    def mouse_wheel(self, event):
+    def on_canvas_scroll(self, event):
         if event.delta > 0:
             self.scale_up()
         else:
@@ -214,7 +210,8 @@ class SVGComparator:
     def toggle_point_visibility(self):
         self.points_visible = not self.points_visible
         self.points_checkbutton_flag.set(self.points_visible)
-        self.draw_points()
+        for svg in self.svgs.values():
+            self.draw_points(svg)
 
     def on_canvas_click(self, event):
         self.drag_data = Point(event.x, event.y)
@@ -225,9 +222,13 @@ class SVGComparator:
         self.drag_data = dest
 
     def move_canvas_to_origin(self):
-        self.canvas.moveto('all', 0, 0)
+        self.canvas.moveto(tk.ALL, 0, 0)
         self.drag_data = Point(0, 0)
-        self.svg_lt_pos = Point(0, 0)
+        for svg in self.svgs.values():
+            svg.lt_pos = Point(0, 0)
+
+    def on_layers_canvas_scroll(self, event):
+        self.layers_canvas.xview_scroll(-event.delta, 'units')
 
 
 if __name__ == '__main__':
