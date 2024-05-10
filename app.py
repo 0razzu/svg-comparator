@@ -1,7 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog
-
-import cairosvg
+from tkinter import filedialog, font
 
 from consts import *
 from point import *
@@ -94,12 +92,10 @@ class SVGComparator:
             svg = Svg(filename)
             self.svgs[filename] = svg
             self.update_canvas()
-            self.add_layer(filename)
+            self.add_layer(svg)
             self.selected_layers.add(svg)
 
-    def add_layer(self, filename):
-        svg = self.svgs[filename]
-
+    def add_layer(self, svg):
         frame = tk.Frame(self.layers_list)
 
         eye_button = tk.Button(frame, text='👁', command=lambda: self.toggle_layer_visibility(svg))
@@ -109,14 +105,31 @@ class SVGComparator:
         tick.select()
         tick.pack(side=tk.LEFT)
 
-        layer_label = tk.Label(frame, text=filename)
-        layer_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        description_frame = tk.Frame(frame)
+
+        def add_line(text, **kwargs):
+            text_frame = tk.Frame(description_frame)
+            text_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+            tk.Label(text_frame, text=text, **kwargs).pack(side=tk.LEFT)
+
+        add_line(svg.filename, font=font.Font(weight='bold'))
+        add_line(f'End points: {len(svg.end_points)}')
+        add_line(f'Internal points: {len(svg.int_points)}')
+        add_line(f'Commands: {svg.cmd_quans['all']}')
+        add_line(f'Moves: {svg.cmd_quans['move']}')
+        add_line(f'Lines: {svg.cmd_quans['line']}')
+        add_line(f'Cubic beziers: {svg.cmd_quans['cubic']}')
+        add_line(f'Quadratic beziers: {svg.cmd_quans['quadratic']}')
+        add_line(f'Arcs: {svg.cmd_quans['arc']}')
+        description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
     def toggle_layer_visibility(self, svg):
         for layer_frame in self.layers_list.winfo_children():
-            if svg.id == self.svgs[layer_frame.winfo_children()[2].cget('text')].id:
+            if svg.id == self.svgs[
+                layer_frame.winfo_children()[2].winfo_children()[0].winfo_children()[0].cget('text')
+            ].id:
                 eye_button = layer_frame.winfo_children()[0]
                 if eye_button.cget('text') == '👁':
                     svg.visible = False

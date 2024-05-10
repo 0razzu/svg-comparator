@@ -12,20 +12,21 @@ class Svg:
         self.id = uuid4().hex
         self.int_points = []
         self.end_points = []
+        self.cmd_quans = {'all': 0, 'move': 0, 'line': 0, 'cubic': 0, 'quadratic': 0, 'arc': 0}
         self.width = 0
         self.height = 0
         self.lt_pos = Point(0, 0)
         self.visible = True
 
-        self._load_points_and_size()
+        self._load_points_and_meta()
 
     def get_png(self, scale):
         return cairosvg.svg2png(file_obj=open(self.filename, 'rb'),
                                 output_width=scale * self.width,
                                 output_height=scale * self.height)
 
-    def _load_points_and_size(self):
-        svg, _, meta = svg2paths2(self.filename)
+    def _load_points_and_meta(self):
+        svg, code, meta = svg2paths2(self.filename)
 
         for path in svg:
             for segment in path:
@@ -50,6 +51,33 @@ class Svg:
                     control.whose = [start, end]
 
                     self.int_points.append(control)
+
+        for line in code:
+            cmds = line.get('d')
+
+            if cmds is None:
+                continue
+
+            for cmd in cmds.split():
+                if len(cmd) > 1 and not cmd[1].isdigit():
+                    continue
+
+                cmd_cut = cmd.lower()[0]
+                if cmd_cut == 'm':
+                    self.cmd_quans['move'] += 1
+                    self.cmd_quans['all'] += 1
+                elif cmd_cut == 'l' or cmd_cut == 'v' or cmd_cut == 'h':
+                    self.cmd_quans['line'] += 1
+                    self.cmd_quans['all'] += 1
+                elif cmd_cut == 'c':
+                    self.cmd_quans['cubic'] += 1
+                    self.cmd_quans['all'] += 1
+                elif cmd_cut == 'q':
+                    self.cmd_quans['quadratic'] += 1
+                    self.cmd_quans['all'] += 1
+                elif cmd_cut == 'a':
+                    self.cmd_quans['arc'] += 1
+                    self.cmd_quans['all'] += 1
 
         xlt, ylt, xrb, yrb = map(int, meta['viewBox'].split())
         self.width, self.height = xrb - xlt, yrb - ylt
