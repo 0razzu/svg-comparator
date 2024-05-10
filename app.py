@@ -222,9 +222,9 @@ class SVGComparator:
         self.drag_data = dest
 
     def move_canvas_to_origin(self):
-        self.canvas.moveto(tk.ALL, 0, 0)
         self.drag_data = Point(0, 0)
         for svg in self.svgs.values():
+            self.canvas.moveto(svg.id, 0, 0)
             svg.lt_pos = Point(0, 0)
 
     def on_layers_canvas_scroll(self, event):
