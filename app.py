@@ -146,7 +146,7 @@ class SVGComparator:
         for layer_frame in self.layers_list.winfo_children():
             tick = layer_frame.winfo_children()[1]
 
-            filename = layer_frame.winfo_children()[2].cget('text')
+            filename = layer_frame.winfo_children()[2].winfo_children()[0].winfo_children()[0].cget('text')
             if svg.id == self.svgs[filename].id:
                 if svg in self.selected_layers:
                     tick.deselect()
