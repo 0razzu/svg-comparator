@@ -17,24 +17,33 @@ class SVGComparator:
         self.canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.layers_frame = tk.Frame(root)
+        _add_layers_canvas_tag(self.layers_frame)
         self.layers_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
         self.layers_canvas = tk.Canvas(self.layers_frame)
-        self.layers_scrollbar = tk.Scrollbar(self.layers_frame, orient=tk.HORIZONTAL, command=self.layers_canvas.xview)
+        _add_layers_canvas_tag(self.layers_canvas)
+        self.layers_vscrollbar = tk.Scrollbar(self.layers_frame, orient=tk.VERTICAL,
+                                              command=self.layers_canvas.yview)
+        self.layers_hscrollbar = tk.Scrollbar(self.layers_frame, orient=tk.HORIZONTAL,
+                                              command=self.layers_canvas.xview)
 
         self.layers_list = tk.Frame(self.layers_canvas)
+        _add_layers_canvas_tag(self.layers_list)
         self.layers_list.bind(
             '<Configure>',
             lambda e: self.layers_canvas.configure(scrollregion=self.layers_canvas.bbox(tk.ALL))
         )
         self.layers_canvas.create_window((0, 0), window=self.layers_list, anchor=tk.NW)
-        self.layers_canvas.configure(xscrollcommand=self.layers_scrollbar.set)
+        self.layers_canvas.configure(yscrollcommand=self.layers_vscrollbar.set)
+        self.layers_canvas.configure(xscrollcommand=self.layers_hscrollbar.set)
 
+        self.layers_hscrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.layers_vscrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.layers_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        self.layers_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.scale = 10
         self.filename = None
         self.svgs = {}
+        self.ordered_svgs = []
         self.points_visible = True
         self.points_checkbutton_flag = tk.BooleanVar(value=self.points_visible)
         self.drag_data = Point(0, 0)
@@ -84,53 +93,78 @@ class SVGComparator:
         self.canvas.bind('<ButtonPress-1>', self.on_canvas_click)
         self.canvas.bind('<Double-Button-1>', lambda _: self.move_canvas_to_origin())
         self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
-        self.layers_canvas.bind('<MouseWheel>', self.on_layers_canvas_scroll)
+        self.layers_canvas.bind_class('LayersCanvas', '<MouseWheel>', self.on_layers_canvas_vscroll)
+        self.layers_canvas.bind_class('LayersCanvas', '<Shift-MouseWheel>', self.on_layers_canvas_hscroll)
 
     def open_svg(self):
         filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
         if filename:
             svg = Svg(filename)
             self.svgs[filename] = svg
+            self.ordered_svgs.append(svg)
             self.update_canvas()
             self.add_layer(svg)
             self.selected_layers.add(svg)
 
     def add_layer(self, svg):
-        frame = tk.Frame(self.layers_list)
+        layer_frame = tk.Frame(self.layers_list)
+        _add_layers_canvas_tag(layer_frame)
 
-        eye_button = tk.Button(frame, text='👁', command=lambda: self.toggle_layer_visibility(svg))
-        eye_button.pack(side=tk.LEFT)
+        button_frame = tk.Frame(layer_frame)
+        _add_layers_canvas_tag(button_frame)
 
-        tick = tk.Checkbutton(frame, command=lambda: self.toggle_layer_selection(svg))
+        tick = tk.Checkbutton(button_frame, command=lambda: self.toggle_layer_selection(svg))
+        _add_layers_canvas_tag(tick)
         tick.select()
-        tick.pack(side=tk.LEFT)
+        tick.pack(side=tk.TOP)
 
-        description_frame = tk.Frame(frame)
+        eye_button = tk.Button(button_frame, text='👁', command=lambda: self.toggle_layer_visibility(svg))
+        _add_layers_canvas_tag(eye_button)
+        eye_button.pack(side=tk.TOP)
 
-        def add_line(text, **kwargs):
+        up_button = tk.Button(button_frame, text='🔼', command=lambda: self.move_layer_up(svg))
+        _add_layers_canvas_tag(up_button)
+        if svg.id == self.ordered_svgs[0].id:
+            up_button['state'] = tk.DISABLED
+        up_button.pack(side=tk.TOP)
+        down_button = tk.Button(button_frame, text='🔽', command=lambda: self.move_layer_down(svg))
+        _add_layers_canvas_tag(down_button)
+        down_button['state'] = tk.DISABLED
+        down_button.pack(side=tk.TOP)
+
+        button_frame.pack(side=tk.LEFT, fill=tk.Y, expand=True)
+
+        description_frame = tk.Frame(layer_frame)
+        _add_layers_canvas_tag(description_frame)
+
+        def add_line(text, margin=False, **kwargs):
             text_frame = tk.Frame(description_frame)
+            _add_layers_canvas_tag(text_frame)
             text_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
-            tk.Label(text_frame, text=text, **kwargs).pack(side=tk.LEFT)
+            label = tk.Label(text_frame, text=text, **kwargs)
+            _add_layers_canvas_tag(label)
+            label.pack(side=tk.LEFT, pady=((0, 5) if margin else (0, 0)))
 
         add_line(svg.filename, font=font.Font(weight='bold'))
         add_line(f'End points: {len(svg.end_points)}')
-        add_line(f'Internal points: {len(svg.int_points)}')
+        add_line(f'Internal points: {len(svg.int_points)}', margin=True)
         add_line(f'Commands: {svg.cmd_quans['all']}')
         add_line(f'Moves: {svg.cmd_quans['move']}')
         add_line(f'Lines: {svg.cmd_quans['line']}')
         add_line(f'Cubic beziers: {svg.cmd_quans['cubic']}')
         add_line(f'Quadratic beziers: {svg.cmd_quans['quadratic']}')
         add_line(f'Arcs: {svg.cmd_quans['arc']}')
-        description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+        description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=(0, 10))
+
+        layer_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
     def toggle_layer_visibility(self, svg):
         for layer_frame in self.layers_list.winfo_children():
             if svg.id == self.svgs[
-                layer_frame.winfo_children()[2].winfo_children()[0].winfo_children()[0].cget('text')
+                layer_frame.winfo_children()[1].winfo_children()[0].winfo_children()[0].cget('text')
             ].id:
-                eye_button = layer_frame.winfo_children()[0]
+                eye_button = layer_frame.winfo_children()[0].winfo_children()[1]
                 if eye_button.cget('text') == '👁':
                     svg.visible = False
                     eye_button.config(text='🚫')
@@ -144,9 +178,9 @@ class SVGComparator:
 
     def toggle_layer_selection(self, svg):
         for layer_frame in self.layers_list.winfo_children():
-            tick = layer_frame.winfo_children()[1]
+            tick = layer_frame.winfo_children()[0].winfo_children()[0]
 
-            filename = layer_frame.winfo_children()[2].winfo_children()[0].winfo_children()[0].cget('text')
+            filename = layer_frame.winfo_children()[1].winfo_children()[0].winfo_children()[0].cget('text')
             if svg.id == self.svgs[filename].id:
                 if svg in self.selected_layers:
                     tick.deselect()
@@ -155,8 +189,14 @@ class SVGComparator:
                     tick.select()
                     self.selected_layers.add(svg)
 
+    def move_layer_up(self, svg):
+        ...
+
+    def move_layer_down(self, svg):
+        ...
+
     def update_canvas(self):
-        for svg in self.svgs.values():
+        for svg in self.ordered_svgs:
             self.draw_svg(svg)
             self.draw_points(svg)
 
@@ -223,7 +263,7 @@ class SVGComparator:
     def toggle_point_visibility(self):
         self.points_visible = not self.points_visible
         self.points_checkbutton_flag.set(self.points_visible)
-        for svg in self.svgs.values():
+        for svg in self.ordered_svgs:
             self.draw_points(svg)
 
     def on_canvas_click(self, event):
@@ -236,12 +276,23 @@ class SVGComparator:
 
     def move_canvas_to_origin(self):
         self.drag_data = Point(0, 0)
-        for svg in self.svgs.values():
+        for svg in self.ordered_svgs:
             self.canvas.moveto(svg.id, 0, 0)
             svg.lt_pos = Point(0, 0)
 
-    def on_layers_canvas_scroll(self, event):
+    def on_layers_canvas_vscroll(self, event):
+        self.layers_canvas.yview_scroll(-event.delta, 'units')
+
+    def on_layers_canvas_hscroll(self, event):
         self.layers_canvas.xview_scroll(-event.delta, 'units')
+
+
+def add_tag(widget, tag):
+    widget.bindtags((tag,) + widget.bindtags())
+
+
+def _add_layers_canvas_tag(widget):
+    add_tag(widget, 'LayersCanvas')
 
 
 if __name__ == '__main__':
