@@ -12,7 +12,7 @@ class SVGComparator:
 
         self.canvas_frame = tk.Frame(root)
         self.canvas_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.canvas = tk.Canvas(self.canvas_frame, bg='white')
+        self.canvas = tk.Canvas(self.canvas_frame, bg='white', borderwidth=0, highlightthickness=0)
         self.canvas.images = {}  # Against GC
         self.canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         _create_grid(self.canvas)
@@ -290,7 +290,7 @@ class SVGComparator:
             self._draw_points(svg, svg.end_points, COLOR_END_POINT)
 
     def scale_up(self):
-        self.scale *= 1.1
+        self.scale += 1.1
         self.update_canvas()
 
     def scale_down(self):
