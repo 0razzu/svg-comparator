@@ -1,6 +1,7 @@
 from point import Point
 
-COLOR_LINE = 'black'
+COLOR_FRAME = 'lightblue'
+COLOR_OUTLINE = 'black'
 COLOR_CUBIC = 'blue'
 COLOR_QUAD = 'green'
 COLOR_ARC = 'magenta'

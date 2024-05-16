@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, font
+from tkinter import filedialog, font, messagebox
 
 from consts import *
 from point import *
@@ -67,7 +67,7 @@ class SVGComparator:
         view_menu.add_command(label='Move Right', command=lambda: self.move_canvas(DIR_RIGHT))
         view_menu.add_command(label='Move Up', command=lambda: self.move_canvas(DIR_UP))
         view_menu.add_command(label='Move Down', command=lambda: self.move_canvas(DIR_DOWN))
-        view_menu.add_command(label='Move to Origin', command=self.move_canvas_to_origin)
+        view_menu.add_command(label='Move to Origin', command=self.move_layers_to_origin)
         view_menu.add_separator()
         view_menu.add_checkbutton(label='Show Control Points', variable=self.points_checkbutton_flag,
                                   command=self.toggle_point_visibility)
@@ -90,27 +90,44 @@ class SVGComparator:
         self.root.bind('<space>', lambda _: self.toggle_point_visibility())
         self.canvas.bind('<MouseWheel>', self.on_canvas_scroll)
         self.canvas.bind('<ButtonPress-1>', self.on_canvas_click)
-        self.canvas.bind('<Double-Button-1>', lambda _: self.move_canvas_to_origin())
+        self.canvas.bind('<Double-Button-1>', lambda _: self.move_layers_to_origin())
         self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
         self.layers_canvas.bind_class('LayersCanvas', '<MouseWheel>', self.on_layers_canvas_vscroll)
         self.layers_canvas.bind_class('LayersCanvas', '<Shift-MouseWheel>', self.on_layers_canvas_hscroll)
 
     def open_svg(self):
-        filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
-        if filename and filename not in self.svgs.keys():
-            svg = Svg(filename)
-            self.svgs[filename] = svg
-            self.ordered_svgs.append(svg)
-            self.update_canvas()
-            self.add_layer(svg)
-            self.selected_layers.add(svg)
+        trying = True
+
+        while trying:
+            filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
+            trying = False
+            if filename:
+                if filename in self.svgs.keys():
+                    svg_id = self.svgs[filename].id
+                    svg_idx = [*map(lambda s: s.id, self.ordered_svgs)].index(svg_id)
+                    trying = messagebox.askretrycancel(title='Error', message=f'This SVG is already open. '
+                                                                              f'#{svg_idx + 1} in layer list')
+                    continue
+
+                svg = Svg(filename)
+                self.svgs[filename] = svg
+                self.ordered_svgs.append(svg)
+                self.update_canvas()
+                self.add_layer(svg)
+                self.selected_layers.add(svg)
 
     def add_layer(self, svg):
+        idx = len(self.layers_list.winfo_children()) + 1
+
         layer_frame = tk.Frame(self.layers_list)
         _add_layers_canvas_tag(layer_frame)
 
         button_frame = tk.Frame(layer_frame)
         _add_layers_canvas_tag(button_frame)
+
+        idx_label = tk.Label(button_frame, text=f'#{idx}')
+        _add_layers_canvas_tag(idx_label)
+        idx_label.pack(side=tk.TOP)
 
         tick = tk.Checkbutton(button_frame, command=lambda: self.toggle_layer_selection(svg))
         _add_layers_canvas_tag(tick)
@@ -163,7 +180,7 @@ class SVGComparator:
             if svg.id == self.svgs[
                 layer_frame.winfo_children()[1].winfo_children()[0].winfo_children()[0].cget('text')
             ].id:
-                eye_button = layer_frame.winfo_children()[0].winfo_children()[1]
+                eye_button = layer_frame.winfo_children()[0].winfo_children()[2]
                 if eye_button.cget('text') == '👁':
                     svg.visible = False
                     eye_button.config(text='🚫')
@@ -177,7 +194,7 @@ class SVGComparator:
 
     def toggle_layer_selection(self, svg):
         for layer_frame in self.layers_list.winfo_children():
-            tick = layer_frame.winfo_children()[0].winfo_children()[0]
+            tick = layer_frame.winfo_children()[0].winfo_children()[1]
 
             filename = layer_frame.winfo_children()[1].winfo_children()[0].winfo_children()[0].cget('text')
             if svg.id == self.svgs[filename].id:
@@ -210,18 +227,26 @@ class SVGComparator:
                                  tags=(f'{svg.id}.image', svg.id, 'image'))
         self.canvas.images[svg.id] = image  # Keeping a reference to the image to prevent garbage collection
 
+    def _draw_frame(self, svg):
+        lt_x, lt_y = svg.lt_pos.x, svg.lt_pos.y
+
+        self.canvas.create_rectangle(
+            lt_x, lt_y,
+            lt_x + self.scale * svg.width, lt_y + self.scale * svg.height,
+            outline=COLOR_FRAME, tags=(f'{svg.id}.frame', svg.id, 'frame'))
+
     def _draw_points(self, svg, points, color):
         if len(points) > 0:
             for point in points:
                 pos = svg.lt_pos + point * self.scale
                 self.canvas.create_oval(pos.x - 3, pos.y - 3, pos.x + 3, pos.y + 3,
-                                        fill=color, outline=COLOR_LINE, tags=(f'{svg.id}.point', svg.id, 'point'))
+                                        fill=color, outline=COLOR_OUTLINE, tags=(f'{svg.id}.point', svg.id, 'point'))
 
     def draw_points(self, svg):
         if not svg.visible:
             return
 
-        self.canvas.delete(f'{svg.id}.point', f'{svg.id}.connector')
+        self.canvas.delete(f'{svg.id}.frame', f'{svg.id}.point', f'{svg.id}.connector')
 
         if self.points_visible:
             self._draw_points(svg, svg.int_points, COLOR_INT_POINT)
@@ -236,6 +261,7 @@ class SVGComparator:
                                             fill=COLOR_CONNECTOR, width=1, arrow=tk.FIRST,
                                             tags=(f'{svg.id}.connector', svg.id, 'connector'))
 
+            self._draw_frame(svg)
             self._draw_points(svg, svg.end_points, COLOR_END_POINT)
 
     def scale_up(self):
@@ -273,9 +299,9 @@ class SVGComparator:
         self.move_canvas(dest - self.drag_data)
         self.drag_data = dest
 
-    def move_canvas_to_origin(self):
+    def move_layers_to_origin(self):
         self.drag_data = Point(0, 0)
-        for svg in self.ordered_svgs:
+        for svg in self.selected_layers:
             self.canvas.moveto(svg.id, 0, 0)
             svg.lt_pos = Point(0, 0)
 
