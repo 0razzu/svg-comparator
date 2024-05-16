@@ -153,7 +153,7 @@ class SVGComparator:
         down_button['state'] = tk.DISABLED
         down_button.pack(side=tk.TOP)
 
-        button_frame.pack(side=tk.LEFT, fill=tk.Y, expand=True)
+        button_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
 
         description_frame = tk.Frame(layer_frame)
         _add_layers_canvas_tag(description_frame)
