@@ -1,5 +1,6 @@
 from point import Point
 
+COLOR_GRID = 'gray95'
 COLOR_FRAME = 'lightblue'
 COLOR_OUTLINE = 'black'
 COLOR_CUBIC = 'blue'

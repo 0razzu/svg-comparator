@@ -15,6 +15,7 @@ class SVGComparator:
         self.canvas = tk.Canvas(self.canvas_frame, bg='white')
         self.canvas.images = {}  # Against GC
         self.canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        _create_grid(self.canvas)
 
         self.layers_frame = tk.Frame(root)
         _add_layers_canvas_tag(self.layers_frame)
@@ -104,8 +105,8 @@ class SVGComparator:
             if filename:
                 if filename in self.svgs.keys():
                     svg_idx = self._svg_idx(self.svgs[filename].id)
-                    trying = messagebox.askretrycancel(title='Error', message=f'This SVG is already open. '
-                                                                              f'#{svg_idx + 1} in layer list')
+                    trying = messagebox.askretrycancel(title='Error',
+                                                       message=f'This SVG is already opened as #{svg_idx + 1}')
                     continue
 
                 svg = Svg(filename)
@@ -113,9 +114,9 @@ class SVGComparator:
                 self.ordered_svgs.append(svg)
                 self.selected_layers.add(svg)
                 self.update_canvas()
-                self.add_layer(svg)
+                self.add_to_layers_list(svg)
 
-    def add_layer(self, svg):
+    def add_to_layers_list(self, svg):
         idx = len(self.layers_list.winfo_children())
 
         layer_frame = tk.Frame(self.layers_list)
@@ -217,7 +218,7 @@ class SVGComparator:
         for layer in self.layers_list.winfo_children():
             layer.destroy()
         for svg in self.ordered_svgs:
-            self.add_layer(svg)
+            self.add_to_layers_list(svg)
 
     def move_layer_up(self, idx):
         if idx == 0:
@@ -337,6 +338,17 @@ class SVGComparator:
 
     def _svg_idx(self, svg_id):
         return [*map(lambda s: s.id, self.ordered_svgs)].index(svg_id)
+
+
+def _create_grid(canvas):
+    width = canvas.winfo_screenwidth()
+    height = canvas.winfo_screenheight()
+
+    for x in range(0, width, 10):
+        canvas.create_line(x, 0, x, height, fill=COLOR_GRID)
+
+    for y in range(0, height, 10):
+        canvas.create_line(0, y, width, y, fill=COLOR_GRID)
 
 
 def add_tag(widget, tag):
