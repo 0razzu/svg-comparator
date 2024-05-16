@@ -103,8 +103,7 @@ class SVGComparator:
             trying = False
             if filename:
                 if filename in self.svgs.keys():
-                    svg_id = self.svgs[filename].id
-                    svg_idx = [*map(lambda s: s.id, self.ordered_svgs)].index(svg_id)
+                    svg_idx = self._svg_idx(self.svgs[filename].id)
                     trying = messagebox.askretrycancel(title='Error', message=f'This SVG is already open. '
                                                                               f'#{svg_idx + 1} in layer list')
                     continue
@@ -112,12 +111,12 @@ class SVGComparator:
                 svg = Svg(filename)
                 self.svgs[filename] = svg
                 self.ordered_svgs.append(svg)
+                self.selected_layers.add(svg)
                 self.update_canvas()
                 self.add_layer(svg)
-                self.selected_layers.add(svg)
 
     def add_layer(self, svg):
-        idx = len(self.layers_list.winfo_children()) + 1
+        idx = len(self.layers_list.winfo_children())
 
         layer_frame = tk.Frame(self.layers_list)
         _add_layers_canvas_tag(layer_frame)
@@ -125,25 +124,30 @@ class SVGComparator:
         button_frame = tk.Frame(layer_frame)
         _add_layers_canvas_tag(button_frame)
 
-        idx_label = tk.Label(button_frame, text=f'#{idx}')
+        idx_label = tk.Label(button_frame, text=f'#{idx + 1}')
         _add_layers_canvas_tag(idx_label)
         idx_label.pack(side=tk.TOP)
 
         tick = tk.Checkbutton(button_frame, command=lambda: self.toggle_layer_selection(svg))
         _add_layers_canvas_tag(tick)
-        tick.select()
+        if svg in self.selected_layers:
+            tick.select()
         tick.pack(side=tk.TOP)
 
-        eye_button = tk.Button(button_frame, text='👁', command=lambda: self.toggle_layer_visibility(svg))
+        eye_button = tk.Button(button_frame, text='👁' if svg.visible else '🚫',
+                               command=lambda: self.toggle_layer_visibility(svg))
         _add_layers_canvas_tag(eye_button)
         eye_button.pack(side=tk.TOP)
 
-        up_button = tk.Button(button_frame, text='🔼', command=lambda: self.move_layer_up(svg))
+        if idx > 0:
+            prev_down_button = self.layers_list.winfo_children()[idx - 1].winfo_children()[0].winfo_children()[4]
+            prev_down_button['state'] = tk.NORMAL
+        up_button = tk.Button(button_frame, text='🔼', command=lambda: self.move_layer_up(idx))
         _add_layers_canvas_tag(up_button)
         if svg.id == self.ordered_svgs[0].id:
             up_button['state'] = tk.DISABLED
         up_button.pack(side=tk.TOP)
-        down_button = tk.Button(button_frame, text='🔽', command=lambda: self.move_layer_down(svg))
+        down_button = tk.Button(button_frame, text='🔽', command=lambda: self.move_layer_down(idx))
         _add_layers_canvas_tag(down_button)
         down_button['state'] = tk.DISABLED
         down_button.pack(side=tk.TOP)
@@ -205,11 +209,27 @@ class SVGComparator:
                     tick.select()
                     self.selected_layers.add(svg)
 
-    def move_layer_up(self, svg):
-        ...
+    def _swap_layers(self, idx1, idx2):
+        self.ordered_svgs[idx1], self.ordered_svgs[idx2] = self.ordered_svgs[idx2], self.ordered_svgs[idx1]
 
-    def move_layer_down(self, svg):
-        ...
+        self.update_canvas()
+
+        for layer in self.layers_list.winfo_children():
+            layer.destroy()
+        for svg in self.ordered_svgs:
+            self.add_layer(svg)
+
+    def move_layer_up(self, idx):
+        if idx == 0:
+            return
+
+        self._swap_layers(idx - 1, idx)
+
+    def move_layer_down(self, idx):
+        if idx == len(self.ordered_svgs) - 1:
+            return
+
+        self._swap_layers(idx, idx + 1)
 
     def update_canvas(self):
         for svg in self.ordered_svgs:
@@ -228,12 +248,16 @@ class SVGComparator:
         self.canvas.images[svg.id] = image  # Keeping a reference to the image to prevent garbage collection
 
     def _draw_frame(self, svg):
+        frame_tags = (f'{svg.id}.frame', svg.id, 'frame')
         lt_x, lt_y = svg.lt_pos.x, svg.lt_pos.y
+        rb_x, rb_y = lt_x + self.scale * svg.width, lt_y + self.scale * svg.height
 
-        self.canvas.create_rectangle(
-            lt_x, lt_y,
-            lt_x + self.scale * svg.width, lt_y + self.scale * svg.height,
-            outline=COLOR_FRAME, tags=(f'{svg.id}.frame', svg.id, 'frame'))
+        idx = self._svg_idx(svg.id)
+        text = self.canvas.create_text(lt_x, rb_y, anchor=tk.NW, text=f'#{idx + 1}', font=font.Font(size=18),
+                                       fill=COLOR_FRAME, tags=frame_tags)
+
+        self.canvas.create_rectangle(lt_x, lt_y, rb_x, rb_y,
+                                     outline=COLOR_FRAME, tags=frame_tags)
 
     def _draw_points(self, svg, points, color):
         if len(points) > 0:
@@ -310,6 +334,9 @@ class SVGComparator:
 
     def on_layers_canvas_hscroll(self, event):
         self.layers_canvas.xview_scroll(-event.delta, 'units')
+
+    def _svg_idx(self, svg_id):
+        return [*map(lambda s: s.id, self.ordered_svgs)].index(svg_id)
 
 
 def add_tag(widget, tag):
