@@ -153,6 +153,10 @@ class SVGComparator:
         down_button['state'] = tk.DISABLED
         down_button.pack(side=tk.TOP)
 
+        close_button = tk.Button(button_frame, text='❌', command=lambda: self.close_svg(svg, idx))
+        _add_layers_canvas_tag(close_button)
+        close_button.pack(side=tk.TOP)
+
         button_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
 
         description_frame = tk.Frame(layer_frame)
@@ -214,11 +218,7 @@ class SVGComparator:
         self.ordered_svgs[idx1], self.ordered_svgs[idx2] = self.ordered_svgs[idx2], self.ordered_svgs[idx1]
 
         self.update_canvas()
-
-        for layer in self.layers_list.winfo_children():
-            layer.destroy()
-        for svg in self.ordered_svgs:
-            self.add_to_layers_list(svg)
+        self.update_layers_list()
 
     def move_layer_up(self, idx):
         if idx == 0:
@@ -232,16 +232,34 @@ class SVGComparator:
 
         self._swap_layers(idx, idx + 1)
 
+    def close_svg(self, svg, idx):
+        self.svgs.pop(svg.filename)
+        self.ordered_svgs.pop(idx)
+        self.selected_layers.discard(svg)
+        self.canvas.delete(f'{svg.id}')
+        if svg.id in self.canvas.images:
+            self.canvas.images.pop(svg.id)
+        self.update_canvas()
+        self.update_layers_list()
+
     def update_canvas(self):
         for svg in self.ordered_svgs:
             self.draw_svg(svg)
             self.draw_points(svg)
+
+    def update_layers_list(self):
+        for layer in self.layers_list.winfo_children():
+            layer.destroy()
+        for svg in self.ordered_svgs:
+            self.add_to_layers_list(svg)
 
     def draw_svg(self, svg):
         if not svg.visible:
             return
 
         self.canvas.delete(f'{svg.id}.image')
+        if svg.id in self.canvas.images:
+            self.canvas.images.pop(svg.id)
 
         image = tk.PhotoImage(data=svg.get_png(self.scale))
         self.canvas.create_image(svg.lt_pos.x, svg.lt_pos.y, anchor=tk.NW, image=image,
