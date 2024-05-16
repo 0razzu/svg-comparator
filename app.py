@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import filedialog, font, messagebox
 
@@ -55,7 +56,7 @@ class SVGComparator:
     def create_menu(self):
         menubar = tk.Menu(self.root)
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label='Open SVG', command=self.open_svg)
+        file_menu.add_command(label='Open SVGs', command=self.open_svgs)
         file_menu.add_separator()
         file_menu.add_command(label='Exit', command=self.root.quit)
         menubar.add_cascade(label='File', menu=file_menu)
@@ -96,25 +97,39 @@ class SVGComparator:
         self.layers_canvas.bind_class('LayersCanvas', '<MouseWheel>', self.on_layers_canvas_vscroll)
         self.layers_canvas.bind_class('LayersCanvas', '<Shift-MouseWheel>', self.on_layers_canvas_hscroll)
 
-    def open_svg(self):
+    def open_svgs(self):
         trying = True
+        already_opened_idxs = []
+        already_opened_filenames = []
 
         while trying:
-            filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
+            filenames = filedialog.askopenfilenames(filetypes=[('SVG files', '*.svg')])
             trying = False
-            if filename:
-                if filename in self.svgs.keys():
-                    svg_idx = self._svg_idx(self.svgs[filename].id)
-                    trying = messagebox.askretrycancel(title='Error',
-                                                       message=f'This SVG is already opened as #{svg_idx + 1}')
-                    continue
+            if filenames:
+                for filename in filenames:
+                    if filename in self.svgs.keys():
+                        svg_idx = self._svg_idx(self.svgs[filename].id)
+                        already_opened_idxs.append(svg_idx)
+                        already_opened_filenames.append(filename)
 
-                svg = Svg(filename)
-                self.svgs[filename] = svg
-                self.ordered_svgs.append(svg)
-                self.selected_layers.add(svg)
-                self.update_canvas()
-                self.add_to_layers_list(svg)
+                        continue
+
+                    svg = Svg(filename)
+                    self.svgs[filename] = svg
+                    self.ordered_svgs.append(svg)
+                    self.selected_layers.add(svg)
+                    self.update_canvas()
+                    self.add_to_layers_list(svg)
+
+                if len(already_opened_idxs) > 0:
+                    trying = messagebox.askretrycancel(
+                        title='Error',
+                        message=f'These SVGs are already opened as '
+                                f'{', '.join(map(lambda idx: f'#{idx + 1}', already_opened_idxs))}',
+                        detail=f',{os.linesep}{os.linesep}'.join(already_opened_filenames),
+                    )
+                    already_opened_idxs.clear()
+                    already_opened_filenames.clear()
 
     def add_to_layers_list(self, svg):
         idx = len(self.layers_list.winfo_children())
