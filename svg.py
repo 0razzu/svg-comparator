@@ -1,6 +1,8 @@
+from io import BytesIO
 from uuid import uuid4
 
 import cairosvg
+from PIL import Image, ImageEnhance
 from svgpathtools import svg2paths, svg2paths2, CubicBezier, QuadraticBezier
 
 from point import complex_to_point, Point
@@ -20,10 +22,19 @@ class Svg:
 
         self._load_points_and_meta()
 
-    def get_png(self, scale):
-        return cairosvg.svg2png(file_obj=open(self.filename, 'rb'),
-                                output_width=scale * self.width,
-                                output_height=scale * self.height)
+    def get_png(self, scale, opacity=.5):
+        png_bytes = BytesIO()
+        png_bytes.write(cairosvg.svg2png(file_obj=open(self.filename, 'rb'),
+                                         output_width=scale * self.width,
+                                         output_height=scale * self.height))
+
+        transparent_image_bytes = BytesIO()
+        with Image.open(png_bytes) as png:
+            alpha = ImageEnhance.Brightness(png.split()[3]).enhance(opacity)
+            png.putalpha(alpha)
+            png.save(transparent_image_bytes, format='PNG')
+
+        return transparent_image_bytes.getvalue()
 
     def _load_points_and_meta(self):
         svg, code, meta = svg2paths2(self.filename)

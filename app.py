@@ -41,7 +41,6 @@ class SVGComparator:
         self.layers_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.scale = 10
-        self.filename = None
         self.svgs = {}
         self.ordered_svgs = []
         self.points_visible = True
@@ -98,7 +97,7 @@ class SVGComparator:
 
     def open_svg(self):
         filename = filedialog.askopenfilename(filetypes=[('SVG files', '*.svg')])
-        if filename:
+        if filename and filename not in self.svgs.keys():
             svg = Svg(filename)
             self.svgs[filename] = svg
             self.ordered_svgs.append(svg)
