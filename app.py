@@ -187,12 +187,12 @@ class SVGComparator:
         add_line(svg.filename, font=font.Font(weight='bold'))
         add_line(f'End points: {len(svg.end_points)}')
         add_line(f'Internal points: {len(svg.int_points)}', margin=True)
-        add_line(f'Commands: {svg.cmd_quans['all']}')
-        add_line(f'Moves: {svg.cmd_quans['move']}')
-        add_line(f'Lines: {svg.cmd_quans['line']}')
-        add_line(f'Cubic beziers: {svg.cmd_quans['cubic']}')
-        add_line(f'Quadratic beziers: {svg.cmd_quans['quadratic']}')
-        add_line(f'Arcs: {svg.cmd_quans['arc']}')
+        add_line(f'Commands: {svg.cmd_quans["all"]}')
+        add_line(f'Moves: {svg.cmd_quans["move"]}')
+        add_line(f'Lines: {svg.cmd_quans["line"]}')
+        add_line(f'Cubic beziers: {svg.cmd_quans["cubic"]}')
+        add_line(f'Quadratic beziers: {svg.cmd_quans["quadratic"]}')
+        add_line(f'Arcs: {svg.cmd_quans["arc"]}')
 
         description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=(0, 10))
 
@@ -251,6 +251,7 @@ class SVGComparator:
     def set_svg_color(self, svg):
         svg.color = colorchooser.askcolor()[0]
         self.draw_svg(svg)
+        self.draw_points(svg)
 
     def close_svg(self, svg, idx):
         self.svgs.pop(svg.filename)
@@ -293,10 +294,10 @@ class SVGComparator:
 
         idx = self._svg_idx(svg.id)
         text = self.canvas.create_text(lt_x, rb_y, anchor=tk.NW, text=f'#{idx + 1}', font=font.Font(size=18),
-                                       fill=COLOR_FRAME, tags=frame_tags)
+                                       fill=rgb_to_hex(svg.color), tags=frame_tags)
 
         self.canvas.create_rectangle(lt_x, lt_y, rb_x, rb_y,
-                                     outline=COLOR_FRAME, tags=frame_tags)
+                                     outline=rgb_to_hex(svg.color), tags=frame_tags)
 
     def _draw_points(self, svg, points, color):
         if len(points) > 0:
@@ -395,6 +396,10 @@ def add_tag(widget, tag):
 
 def _add_layers_canvas_tag(widget):
     add_tag(widget, 'LayersCanvas')
+
+
+def rgb_to_hex(rgb):
+    return '#{:02X}{:02X}{:02X}'.format(rgb[0], rgb[1], rgb[2])
 
 
 if __name__ == '__main__':
