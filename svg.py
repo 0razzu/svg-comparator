@@ -19,22 +19,38 @@ class Svg:
         self.height = 0
         self.lt_pos = Point(0, 0)
         self.visible = True
+        self.png = {'scale': -1, 'bytes': BytesIO()}
+        self.opacity = .5
+        self.color = (0, 0, 0)
 
         self._load_points_and_meta()
 
-    def get_png(self, scale, opacity=.5):
-        png_bytes = BytesIO()
-        png_bytes.write(cairosvg.svg2png(file_obj=open(self.filename, 'rb'),
-                                         output_width=scale * self.width,
-                                         output_height=scale * self.height))
+    def get_png(self, scale):
+        if self.png['scale'] != scale:
+            png_bytes = BytesIO()
+            png_bytes.write(cairosvg.svg2png(file_obj=open(self.filename, 'rb'),
+                                             output_width=scale * self.width,
+                                             output_height=scale * self.height))
+            self.png['scale'] = scale
+            self.png['bytes'] = png_bytes
 
-        transparent_image_bytes = BytesIO()
+        self.png['bytes'].seek(0)
+        png_bytes = BytesIO(self.png['bytes'].read())
+
+        res_png_bytes = BytesIO()
         with Image.open(png_bytes) as png:
-            alpha = ImageEnhance.Brightness(png.split()[3]).enhance(opacity)
-            png.putalpha(alpha)
-            png.save(transparent_image_bytes, format='PNG')
+            png_data = png.getdata()
+            new_png_data = []
+            for pixel in png_data:
+                if pixel[3] > 0:
+                    new_png_data.append((*self.color, int(pixel[3] * self.opacity)))
+                else:
+                    new_png_data.append(pixel)
+            png.putdata(new_png_data)
 
-        return transparent_image_bytes.getvalue()
+            png.save(res_png_bytes, format='PNG')
+
+        return res_png_bytes.getvalue()
 
     def _load_points_and_meta(self):
         svg, code, meta = svg2paths2(self.filename)

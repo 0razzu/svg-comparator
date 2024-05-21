@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, font, messagebox
+from tkinter import filedialog, font, messagebox, colorchooser
 
 from consts import *
 from point import *
@@ -121,7 +121,8 @@ class SVGComparator:
                     trying = messagebox.askretrycancel(
                         title='Error',
                         message='These SVGs are already opened',
-                        detail=f',{os.linesep}{os.linesep}'.join(map(lambda p: f'{p[0]} (#{p[1] + 1})', already_opened)),
+                        detail=f',{os.linesep}{os.linesep}'.join(
+                            map(lambda p: f'{p[0]} (#{p[1] + 1})', already_opened)),
                     )
                     already_opened.clear()
 
@@ -162,6 +163,10 @@ class SVGComparator:
         down_button['state'] = tk.DISABLED
         down_button.pack(side=tk.TOP)
 
+        color_button = tk.Button(button_frame, text='🖌️', command=lambda: self.set_svg_color(svg))
+        _add_layers_canvas_tag(color_button)
+        color_button.pack(side=tk.TOP)
+
         close_button = tk.Button(button_frame, text='❌', command=lambda: self.close_svg(svg, idx))
         _add_layers_canvas_tag(close_button)
         close_button.pack(side=tk.TOP)
@@ -197,6 +202,7 @@ class SVGComparator:
         layer_frame.eye_button = eye_button
         layer_frame.up_button = up_button
         layer_frame.down_button = down_button
+        layer_frame.color_button = color_button
         layer_frame.close_button = close_button
         layer_frame.filename = svg.filename
 
@@ -241,6 +247,10 @@ class SVGComparator:
             return
 
         self._swap_layers(idx, idx + 1)
+
+    def set_svg_color(self, svg):
+        svg.color = colorchooser.askcolor()[0]
+        self.draw_svg(svg)
 
     def close_svg(self, svg, idx):
         self.svgs.pop(svg.filename)
@@ -318,11 +328,11 @@ class SVGComparator:
             self._draw_points(svg, svg.end_points, COLOR_END_POINT)
 
     def scale_up(self):
-        self.scale += 1.1
+        self.scale += 1
         self.update_canvas()
 
     def scale_down(self):
-        self.scale /= 1.1
+        self.scale -= 1
         self.update_canvas()
 
     def move_canvas(self, direction, speed=1):
