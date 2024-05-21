@@ -99,8 +99,7 @@ class SVGComparator:
 
     def open_svgs(self):
         trying = True
-        already_opened_idxs = []
-        already_opened_filenames = []
+        already_opened = []
 
         while trying:
             filenames = filedialog.askopenfilenames(filetypes=[('SVG files', '*.svg')])
@@ -108,10 +107,7 @@ class SVGComparator:
             if filenames:
                 for filename in filenames:
                     if filename in self.svgs.keys():
-                        svg_idx = self._svg_idx(self.svgs[filename].id)
-                        already_opened_idxs.append(svg_idx)
-                        already_opened_filenames.append(filename)
-
+                        already_opened.append((filename, self._svg_idx(self.svgs[filename].id)))
                         continue
 
                     svg = Svg(filename)
@@ -121,15 +117,13 @@ class SVGComparator:
                     self.update_canvas()
                     self.add_to_layers_list(svg)
 
-                if len(already_opened_idxs) > 0:
+                if len(already_opened) > 0:
                     trying = messagebox.askretrycancel(
                         title='Error',
-                        message=f'These SVGs are already opened as '
-                                f'{', '.join(map(lambda idx: f'#{idx + 1}', already_opened_idxs))}',
-                        detail=f',{os.linesep}{os.linesep}'.join(already_opened_filenames),
+                        message='These SVGs are already opened',
+                        detail=f',{os.linesep}{os.linesep}'.join(map(lambda p: f'{p[0]} (#{p[1] + 1})', already_opened)),
                     )
-                    already_opened_idxs.clear()
-                    already_opened_filenames.clear()
+                    already_opened.clear()
 
     def add_to_layers_list(self, svg):
         idx = len(self.layers_list.winfo_children())
@@ -156,7 +150,7 @@ class SVGComparator:
         eye_button.pack(side=tk.TOP)
 
         if idx > 0:
-            prev_down_button = self.layers_list.winfo_children()[idx - 1].winfo_children()[0].winfo_children()[4]
+            prev_down_button = self.layers_list.winfo_children()[idx - 1].down_button
             prev_down_button['state'] = tk.NORMAL
         up_button = tk.Button(button_frame, text='🔼', command=lambda: self.move_layer_up(idx))
         _add_layers_canvas_tag(up_button)
@@ -198,35 +192,36 @@ class SVGComparator:
         description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=(0, 10))
 
         layer_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+        layer_frame.idx_label = idx_label
+        layer_frame.tick = tick
+        layer_frame.eye_button = eye_button
+        layer_frame.up_button = up_button
+        layer_frame.down_button = down_button
+        layer_frame.close_button = close_button
+        layer_frame.filename = svg.filename
 
     def toggle_layer_visibility(self, svg):
         for layer_frame in self.layers_list.winfo_children():
-            if svg.id == self.svgs[
-                layer_frame.winfo_children()[1].winfo_children()[0].winfo_children()[0].cget('text')
-            ].id:
-                eye_button = layer_frame.winfo_children()[0].winfo_children()[2]
-                if eye_button.cget('text') == '👁':
+            if svg.id == self.svgs[layer_frame.filename].id:
+                if layer_frame.eye_button.cget('text') == '👁':
                     svg.visible = False
-                    eye_button.config(text='🚫')
+                    layer_frame.eye_button.configure(text='🚫')
                     self.canvas.delete(svg.id)
                 else:
                     svg.visible = True
-                    eye_button.configure(text='👁')
+                    layer_frame.eye_button.configure(text='👁')
                     self.draw_svg(svg)
                     self.draw_points(svg)
                 break
 
     def toggle_layer_selection(self, svg):
         for layer_frame in self.layers_list.winfo_children():
-            tick = layer_frame.winfo_children()[0].winfo_children()[1]
-
-            filename = layer_frame.winfo_children()[1].winfo_children()[0].winfo_children()[0].cget('text')
-            if svg.id == self.svgs[filename].id:
+            if svg.id == self.svgs[layer_frame.filename].id:
                 if svg in self.selected_layers:
-                    tick.deselect()
+                    layer_frame.tick.deselect()
                     self.selected_layers.remove(svg)
                 else:
-                    tick.select()
+                    layer_frame.tick.select()
                     self.selected_layers.add(svg)
 
     def _swap_layers(self, idx1, idx2):
