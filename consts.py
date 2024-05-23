@@ -14,3 +14,5 @@ DIR_LEFT = Point(-1, 0)
 DIR_RIGHT = Point(1, 0)
 DIR_UP = Point(0, -1)
 DIR_DOWN = Point(0, 1)
+
+CANVAS_SCROLL_DELAY = 500

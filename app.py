@@ -17,6 +17,7 @@ class SVGComparator:
         self.canvas.images = {}  # Against GC
         self.canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         _create_grid(self.canvas)
+        self.canvas_scroll_timer_id = None
 
         self.layers_frame = tk.Frame(root)
         _add_layers_canvas_tag(self.layers_frame)
@@ -268,6 +269,19 @@ class SVGComparator:
             self.draw_svg(svg)
             self.draw_points(svg)
 
+    def update_canvas_with_delay(self):
+        for svg in self.ordered_svgs:
+            self.canvas.delete(f'{svg.id}.frame')
+            self._draw_frame(svg)
+
+        if self.canvas_scroll_timer_id is not None:
+            self.root.after_cancel(self.canvas_scroll_timer_id)
+
+        self.canvas_scroll_timer_id = self.root.after(
+            CANVAS_SCROLL_DELAY,
+            self.update_canvas
+        )
+
     def update_layers_list(self):
         for layer in self.layers_list.winfo_children():
             layer.destroy()
@@ -330,11 +344,12 @@ class SVGComparator:
 
     def scale_up(self):
         self.scale += 1
-        self.update_canvas()
+        self.update_canvas_with_delay()
 
     def scale_down(self):
-        self.scale -= 1
-        self.update_canvas()
+        if self.scale > 1:
+            self.scale -= 1
+            self.update_canvas_with_delay()
 
     def move_canvas(self, direction, speed=1):
         delta = speed * direction
