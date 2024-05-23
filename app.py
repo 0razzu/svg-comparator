@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, font, messagebox, colorchooser
+from tkinter import filedialog, font, messagebox, colorchooser, ttk
 
 from consts import *
 from point import *
@@ -17,7 +17,6 @@ class SVGComparator:
         self.canvas.images = {}  # Against GC
         self.canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         _create_grid(self.canvas)
-        self.canvas_scroll_timer_id = None
 
         self.layers_frame = tk.Frame(root)
         _add_layers_canvas_tag(self.layers_frame)
@@ -50,6 +49,9 @@ class SVGComparator:
         self.points_checkbutton_flag = tk.BooleanVar(value=self.points_visible)
         self.drag_data = Point(0, 0)
         self.selected_layers = set()
+
+        self.canvas_scroll_timer_id = None
+        self.canvas_opacity_timer_ids = {}
 
         self.create_menu()
         self.bind_events()
@@ -177,6 +179,28 @@ class SVGComparator:
         description_frame = tk.Frame(layer_frame)
         _add_layers_canvas_tag(description_frame)
 
+        opacity_frame = tk.Frame(layer_frame)
+        _add_layers_canvas_tag(opacity_frame)
+
+        opacity_label = tk.Label(opacity_frame, anchor=tk.N, width=3)
+        _add_layers_canvas_tag(opacity_label)
+
+        def update_opacity_label(val):
+            opacity_label.configure(text=str(int(val * 100)))
+
+        update_opacity_label(svg.opacity)
+
+        opacity_scale = ttk.Scale(opacity_frame, orient=tk.VERTICAL,
+                                  from_=0, to=1,
+                                  value=svg.opacity,
+                                  command=lambda val: self.set_svg_opacity(svg, float(val), update_opacity_label))
+        _add_layers_canvas_tag(opacity_scale)
+
+        opacity_scale.pack(side=tk.TOP, fill=tk.Y, expand=True)
+        opacity_label.pack(side=tk.TOP, fill=tk.X, expand=False)
+
+        opacity_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+
         def add_line(text, margin=False, **kwargs):
             text_frame = tk.Frame(description_frame)
             _add_layers_canvas_tag(text_frame)
@@ -185,7 +209,12 @@ class SVGComparator:
             _add_layers_canvas_tag(label)
             label.pack(side=tk.LEFT, pady=((0, 5) if margin else (0, 0)))
 
-        add_line(svg.filename, font=font.Font(weight='bold'))
+        filename_last_sep = svg.filename.rfind(os.sep)
+        if filename_last_sep == -1:
+            add_line(svg.filename, font=font.Font(weight='bold'))
+        else:
+            add_line(svg.filename[:filename_last_sep + 1], font=font.Font(weight='bold'))
+            add_line(svg.filename[filename_last_sep + 1:], font=font.Font(weight='bold'))
         add_line(f'End points: {len(svg.end_points)}')
         add_line(f'Internal points: {len(svg.int_points)}', margin=True)
         add_line(f'Commands: {svg.cmd_quans["all"]}')
@@ -195,9 +224,9 @@ class SVGComparator:
         add_line(f'Quadratic beziers: {svg.cmd_quans["quadratic"]}')
         add_line(f'Arcs: {svg.cmd_quans["arc"]}')
 
-        description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=(0, 10))
+        description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        layer_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+        layer_frame.pack(side=tk.TOP, fill=tk.X, expand=True, pady=(0, 10))
         layer_frame.idx_label = idx_label
         layer_frame.tick = tick
         layer_frame.eye_button = eye_button
@@ -217,8 +246,7 @@ class SVGComparator:
                 else:
                     svg.visible = True
                     layer_frame.eye_button.configure(text='👁')
-                    self.draw_svg(svg)
-                    self.draw_points(svg)
+                    self.update_canvas_starting(svg)
                 break
 
     def toggle_layer_selection(self, svg):
@@ -234,7 +262,7 @@ class SVGComparator:
     def _swap_layers(self, idx1, idx2):
         self.ordered_svgs[idx1], self.ordered_svgs[idx2] = self.ordered_svgs[idx2], self.ordered_svgs[idx1]
 
-        self.update_canvas()
+        self.update_canvas_starting(self.ordered_svgs[idx1], update_fst_png=False)
         self.update_layers_list()
 
     def move_layer_up(self, idx):
@@ -251,8 +279,19 @@ class SVGComparator:
 
     def set_svg_color(self, svg):
         svg.color = colorchooser.askcolor()[0]
-        self.draw_svg(svg)
-        self.draw_points(svg)
+        self.update_canvas_starting(svg)
+
+    def set_svg_opacity(self, svg, val, update_opacity_label):
+        svg.opacity = val
+        update_opacity_label(val)
+
+        if self.canvas_opacity_timer_ids.get(svg.id) is not None:
+            self.root.after_cancel(self.canvas_opacity_timer_ids[svg.id])
+
+        self.canvas_opacity_timer_ids[svg.id] = self.root.after(
+            SVG_OPACITY_DELAY,
+            lambda: self.update_canvas_starting(svg)
+        )
 
     def close_svg(self, svg, idx):
         self.svgs.pop(svg.filename)
@@ -261,12 +300,27 @@ class SVGComparator:
         self.canvas.delete(f'{svg.id}')
         if svg.id in self.canvas.images:
             self.canvas.images.pop(svg.id)
-        self.update_canvas()
+
+        if idx < len(self.ordered_svgs):
+            self.update_canvas_starting(self.ordered_svgs[idx])
         self.update_layers_list()
 
     def update_canvas(self):
         for svg in self.ordered_svgs:
             self.draw_svg(svg)
+            self.draw_points(svg)
+
+    def update_canvas_starting(self, fst_svg, update_fst_png=True):
+        self.draw_svg(fst_svg, update_png=update_fst_png)
+        self.draw_points(fst_svg)
+
+        found_causing = False
+        for svg in self.ordered_svgs:
+            if not found_causing:
+                if svg.id == fst_svg.id:
+                    found_causing = True
+                continue
+            self.draw_svg(svg, update_png=False)
             self.draw_points(svg)
 
     def update_canvas_with_delay(self):
@@ -278,7 +332,7 @@ class SVGComparator:
             self.root.after_cancel(self.canvas_scroll_timer_id)
 
         self.canvas_scroll_timer_id = self.root.after(
-            CANVAS_SCROLL_DELAY,
+            SVG_SCALE_DELAY,
             self.update_canvas
         )
 
@@ -288,18 +342,21 @@ class SVGComparator:
         for svg in self.ordered_svgs:
             self.add_to_layers_list(svg)
 
-    def draw_svg(self, svg):
+    def draw_svg(self, svg, update_png=True):
         if not svg.visible:
             return
 
         self.canvas.delete(f'{svg.id}.image')
-        if svg.id in self.canvas.images:
-            self.canvas.images.pop(svg.id)
 
-        image = tk.PhotoImage(data=svg.get_png(self.scale))
-        self.canvas.create_image(svg.lt_pos.x, svg.lt_pos.y, anchor=tk.NW, image=image,
+        if update_png:
+            if svg.id in self.canvas.images:
+                self.canvas.images.pop(svg.id)
+
+            image = tk.PhotoImage(data=svg.get_png(self.scale))
+            self.canvas.images[svg.id] = image  # Keeping a reference to the image to prevent garbage collection
+
+        self.canvas.create_image(svg.lt_pos.x, svg.lt_pos.y, anchor=tk.NW, image=self.canvas.images[svg.id],
                                  tags=(f'{svg.id}.image', svg.id, 'image'))
-        self.canvas.images[svg.id] = image  # Keeping a reference to the image to prevent garbage collection
 
     def _draw_frame(self, svg):
         frame_tags = (f'{svg.id}.frame', svg.id, 'frame')
