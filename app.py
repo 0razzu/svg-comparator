@@ -142,10 +142,19 @@ class SVGComparator:
         _add_layers_canvas_tag(idx_label)
         idx_label.pack(side=tk.TOP)
 
-        tick = tk.Checkbutton(button_frame, command=lambda: self.toggle_layer_selection(svg))
-        _add_layers_canvas_tag(tick)
+        def set_checkbutton(checkbutton, selected):
+            if selected:
+                checkbutton.select()
+            else:
+                checkbutton.deselect()
+
+        tick = tk.Checkbutton(button_frame, command=lambda: self.toggle_layer_selection(
+            svg,
+            lambda selected: set_checkbutton(tick, selected),
+        ))
         if svg in self.selected_layers:
             tick.select()
+        _add_layers_canvas_tag(tick)
         tick.pack(side=tk.TOP)
 
         def set_eye_button_text(button, visible):
@@ -153,7 +162,7 @@ class SVGComparator:
 
         eye_button = tk.Button(button_frame, command=lambda: self.toggle_layer_visibility(
             svg,
-            lambda visible: set_eye_button_text(eye_button, visible)
+            lambda visible: set_eye_button_text(eye_button, visible),
         ))
         set_eye_button_text(eye_button, True)
         _add_layers_canvas_tag(eye_button)
@@ -247,15 +256,13 @@ class SVGComparator:
         else:
             self.canvas.delete(svg.id)
 
-    def toggle_layer_selection(self, svg):
-        for layer_frame in self.layers_list.winfo_children():
-            if svg.id == self.svgs[layer_frame.filename].id:
-                if svg in self.selected_layers:
-                    layer_frame.tick.deselect()
-                    self.selected_layers.remove(svg)
-                else:
-                    layer_frame.tick.select()
-                    self.selected_layers.add(svg)
+    def toggle_layer_selection(self, svg, set_tick):
+        if svg in self.selected_layers:
+            set_tick(False)
+            self.selected_layers.remove(svg)
+        else:
+            set_tick(True)
+            self.selected_layers.add(svg)
 
     def _swap_layers(self, idx1, idx2):
         self.ordered_svgs[idx1], self.ordered_svgs[idx2] = self.ordered_svgs[idx2], self.ordered_svgs[idx1]
