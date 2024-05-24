@@ -148,8 +148,14 @@ class SVGComparator:
             tick.select()
         tick.pack(side=tk.TOP)
 
-        eye_button = tk.Button(button_frame, text='👁' if svg.visible else '🚫',
-                               command=lambda: self.toggle_layer_visibility(svg))
+        def set_eye_button_text(button, visible):
+            button.configure(text=('👁' if visible else '🚫'))
+
+        eye_button = tk.Button(button_frame, command=lambda: self.toggle_layer_visibility(
+            svg,
+            lambda visible: set_eye_button_text(eye_button, visible)
+        ))
+        set_eye_button_text(eye_button, True)
         _add_layers_canvas_tag(eye_button)
         eye_button.pack(side=tk.TOP)
 
@@ -227,27 +233,19 @@ class SVGComparator:
         description_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         layer_frame.pack(side=tk.TOP, fill=tk.X, expand=True, pady=(0, 10))
-        layer_frame.idx_label = idx_label
         layer_frame.tick = tick
-        layer_frame.eye_button = eye_button
         layer_frame.up_button = up_button
         layer_frame.down_button = down_button
-        layer_frame.color_button = color_button
-        layer_frame.close_button = close_button
         layer_frame.filename = svg.filename
 
-    def toggle_layer_visibility(self, svg):
-        for layer_frame in self.layers_list.winfo_children():
-            if svg.id == self.svgs[layer_frame.filename].id:
-                if layer_frame.eye_button.cget('text') == '👁':
-                    svg.visible = False
-                    layer_frame.eye_button.configure(text='🚫')
-                    self.canvas.delete(svg.id)
-                else:
-                    svg.visible = True
-                    layer_frame.eye_button.configure(text='👁')
-                    self.update_canvas_starting(svg)
-                break
+    def toggle_layer_visibility(self, svg, set_eye_button_text):
+        svg.visible = not svg.visible
+        set_eye_button_text(svg.visible)
+
+        if svg.visible:
+            self.update_canvas_starting(svg)
+        else:
+            self.canvas.delete(svg.id)
 
     def toggle_layer_selection(self, svg):
         for layer_frame in self.layers_list.winfo_children():
